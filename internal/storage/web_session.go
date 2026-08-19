@@ -149,7 +149,7 @@ func (s *Storage) RotateWebSession(oldID string, session *model.WebSession) erro
 			secret_hash=$3,
 			user_id=$4,
 			state=$5,
-			created_at=now()
+			created_at=CURRENT_TIMESTAMP
 		WHERE
 			id=$1
 		RETURNING created_at
@@ -244,18 +244,39 @@ const anonymousWebSessionLifetime = 24 * time.Hour
 // CleanOldWebSessions removes web sessions older than the specified interval (24h minimum),
 // and anonymous web sessions older than anonymousWebSessionLifetime.
 func (s *Storage) CleanOldWebSessions(interval time.Duration) (int64, error) {
+	if interval < 24*time.Hour {
+		interval = 24 * time.Hour
+	}
+
+	now := time.Now().UTC()
+
 	query := `
+		DELETE FROM
+			web_sessions
+		WHERE
+			created_at < $1 OR
+			(user_id IS NULL AND created_at < $2)
+	`
+	args := []any{
+		now.Add(-interval).Format("2006-01-02 15:04:05"),
+		now.Add(-anonymousWebSessionLifetime).Format("2006-01-02 15:04:05"),
+	}
+
+	if !s.sqlite {
+		query = `
 		DELETE FROM
 			web_sessions
 		WHERE
 			created_at < now() - $1::interval OR
 			(user_id IS NULL AND created_at < now() - $2::interval)
 	`
+		args = []any{
+			fmt.Sprintf("%d days", int(interval/(24*time.Hour))),
+			fmt.Sprintf("%d hours", int(anonymousWebSessionLifetime/time.Hour)),
+		}
+	}
 
-	days := max(int(interval/(24*time.Hour)), 1)
-	anonymousHours := int(anonymousWebSessionLifetime / time.Hour)
-
-	result, err := s.db.Exec(query, fmt.Sprintf("%d days", days), fmt.Sprintf("%d hours", anonymousHours))
+	result, err := s.db.Exec(query, args...)
 	if err != nil {
 		return 0, fmt.Errorf(`store: unable to clean old web sessions: %v`, err)
 	}

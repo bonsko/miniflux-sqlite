@@ -1,0 +1,96 @@
+name: SQLite
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (SQLite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+      - name: Build
+        run: go build ./...
+      - name: Unit tests with race detector
+        run: go test -race -count=1 ./...
+      - name: SQLite smoke test
+        run: |
+          set -euo pipefail
+          go build -o miniflux .
+          DATABASE_URL=sqlite:///tmp/miniflux.db \
+            RUN_MIGRATIONS=1 \
+            CREATE_ADMIN=1 \
+            ADMIN_USERNAME=admin \
+            ADMIN_PASSWORD=test123 \
+            LISTEN_ADDR=127.0.0.1:8080 \
+            ./miniflux &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthcheck >/dev/null; then
+              echo "healthcheck OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "miniflux did not become healthy" >&2
+          exit 1
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: armv7 }
+          - { goos: linux, goarch: riscv64 }
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: freebsd, goarch: amd64 }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+      - name: Compile
+        env:
+          CGO_ENABLED: 0
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: '7'
+        run: |
+          set -euo pipefail
+          go build -trimpath -ldflags "-s -w" -o "miniflux-${GOOS}-${GOARCH}" .
+          sha256sum "miniflux-${GOOS}-${GOARCH}" > "miniflux-${GOOS}-${GOARCH}.sha256"
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: miniflux-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            miniflux-${{ matrix.goos }}-${{ matrix.goarch }}
+            miniflux-${{ matrix.goos }}-${{ matrix.goarch }}.sha256
+          if-no-files-found: error

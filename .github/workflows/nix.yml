@@ -29,3 +29,24 @@ jobs:
         run: nix build .#default --print-build-logs
       - name: Run binary
         run: ./result/bin/miniflux --version
+      - name: SQLite smoke test of the packaged binary
+        run: |
+          set -euo pipefail
+          DATABASE_URL=sqlite:///tmp/nix-miniflux.db \
+            RUN_MIGRATIONS=1 \
+            CREATE_ADMIN=1 \
+            ADMIN_USERNAME=admin \
+            ADMIN_PASSWORD=test123 \
+            LISTEN_ADDR=127.0.0.1:8080 \
+            ./result/bin/miniflux &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthcheck >/dev/null; then
+              echo "healthcheck OK"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "packaged binary did not become healthy" >&2
+          exit 1

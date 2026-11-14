@@ -1,0 +1,35 @@
+name: Flake update
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    name: nix flake update
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - name: Update lock
+        run: nix flake update --print-build-logs
+      - name: Verify build
+        run: nix build .#default --print-build-logs
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          if git diff --quiet flake.lock; then
+            echo "flake.lock is already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add flake.lock
+          git commit -m "build: update flake lock"
+          git push

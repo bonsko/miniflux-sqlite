@@ -14,42 +14,52 @@
       ];
 
       forAllSystems = nixpkgs.lib.genAttrs systems;
-
-      version = "unstable-${self.shortRev or "dirty"}";
     in
     {
       packages = forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          default = pkgs.buildGoModule {
+
+          # Mirror of pkgs/by-name/mi/miniflux/package.nix, with the source
+          # swapped for this repository.
+          miniflux = pkgs.buildGoModule (finalAttrs: {
             pname = "miniflux";
-            inherit version;
+            version = "unstable-${self.shortRev or self.dirtyShortRev or "dirty"}";
+
             src = self;
 
             vendorHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
-            subPackages = [ "." ];
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            # skip tests that require network access
+            checkFlags = [ "-skip=TestResolvesToPrivateIP" ];
 
             ldflags = [
               "-s"
               "-w"
-              "-X miniflux.app/v2/internal/version.Version=${version}"
+              "-X miniflux.app/v2/internal/version.Version=${finalAttrs.version}"
             ];
 
-            # Tests live in CI; the sandbox has no network for anything that
-            # reaches out.
-            doCheck = false;
+            __darwinAllowLocalNetworking = true;
+
+            postInstall = ''
+              mv $out/bin/miniflux.app $out/bin/miniflux
+              installManPage miniflux.1
+            '';
 
             meta = {
               description = "Minimalist and opinionated feed reader with SQLite support";
-              homepage = "https://miniflux.app";
+              changelog = "https://github.com/bonsko/miniflux-sqlite/commits/main";
+              homepage = "https://miniflux.app/";
               license = pkgs.lib.licenses.asl20;
               mainProgram = "miniflux";
             };
-          };
+          });
+        in
+        {
+          default = miniflux;
         }
       );
 

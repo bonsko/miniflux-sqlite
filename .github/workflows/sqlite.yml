@@ -61,7 +61,7 @@ jobs:
         include:
           - { goos: linux, goarch: amd64 }
           - { goos: linux, goarch: arm64 }
-          - { goos: linux, goarch: armv7 }
+          - { goos: linux, goarch: arm }
           - { goos: linux, goarch: riscv64 }
           - { goos: darwin, goarch: arm64 }
           - { goos: darwin, goarch: amd64 }
@@ -81,7 +81,6 @@ jobs:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          GOARM: '7'
         run: |
           set -euo pipefail
           go build -trimpath -ldflags "-s -w" -o "miniflux-${GOOS}-${GOARCH}" .

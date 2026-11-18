@@ -29,7 +29,7 @@
 
             src = self;
 
-            vendorHash = "sha256-wmiWNswcLJIjnyaVAfFlwAl1oqti3K0cBAHiR3+ZzjY=";
+            vendorHash = "sha256-n9UkKCDTUam+1tkVp8f4hb7AVg7OtIJI7NhPl3ii7iQ=";
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
 
